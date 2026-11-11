@@ -139,8 +139,9 @@ class ExampleRobolectricTest {
         dao.insertGroups(groups)
         dao.insertBorrowers(borrowers)
 
-        val initialRepayments = InitialSeedData.getInitialRepayments()
-        initialRepayments.forEach { dao.insertRepayment(it) }
+        assertTrue(repo.computePendingRepayments(centers, groups, borrowers, emptyList()).isEmpty())
+        val paidOn = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata")).minusDays(14).toString()
+        dao.confirmDisbursement(groups.first().groupId, paidOn)
 
         val dbCenters = dao.getAllCenters().first()
         val dbGroups = dao.getAllGroups().first()
@@ -149,12 +150,6 @@ class ExampleRobolectricTest {
 
         val pendingItems = repo.computePendingRepayments(dbCenters, dbGroups, dbBorrowers, dbRepayments)
         assertTrue(pendingItems.isNotEmpty())
-
-        // Verified that Padmamma has paid her installment
-        val padmamma = pendingItems.find { it.borrowerId == "BOR-KTH-101" }
-        assertNotNull(padmamma)
-        assertEquals(RepaymentStatus.PAID, padmamma?.status)
-        assertEquals(0.0, padmamma?.pendingAmount ?: 0.0, 0.01)
 
         // Record a new cash collection for an unpaid borrower
         val unpaid = pendingItems.first { it.pendingAmount > 0 }
@@ -166,7 +161,8 @@ class ExampleRobolectricTest {
             installmentDue = unpaid.installmentDue,
             amountPaid = unpaid.pendingAmount,
             paymentMode = PaymentMode.CASH,
-            attendance = AttendanceStatus.PRESENT
+            attendance = AttendanceStatus.PRESENT,
+            officerCode = "TEST-OFFICER"
         )
 
         assertNotNull(receipt.receiptNumber)

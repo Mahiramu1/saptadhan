@@ -21,7 +21,7 @@ import com.example.data.model.RepaymentRecord
         CashReconciliation::class,
         LoanApplication::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -39,7 +39,14 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "disrub_collect_wanaparthy.db"
-                ).fallbackToDestructiveMigration(true).build()
+                ).addMigrations(object : androidx.room.migration.Migration(3, 4) {
+                    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                        db.execSQL("ALTER TABLE jlg_groups ADD COLUMN disbursedOn TEXT")
+                        db.execSQL("UPDATE jlg_groups SET isDisbursed = 0")
+                        db.execSQL("ALTER TABLE repayment_records ADD COLUMN officerCode TEXT")
+                        db.execSQL("CREATE UNIQUE INDEX index_repayment_records_receiptNumber_officerCode ON repayment_records(receiptNumber, officerCode)")
+                    }
+                }).build()
                 INSTANCE = instance
                 instance
             }

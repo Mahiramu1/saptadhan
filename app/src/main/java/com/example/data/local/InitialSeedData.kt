@@ -108,7 +108,7 @@ object InitialSeedData {
             grtApprovedByBm = true,
             crossGuaranteeConsented = true,
             isSanctioned = true,
-            isDisbursed = true
+            isDisbursed = false
         ),
         JlgGroup(
             groupId = "JLG-KTH-002",
@@ -125,7 +125,7 @@ object InitialSeedData {
             grtApprovedByBm = true,
             crossGuaranteeConsented = true,
             isSanctioned = true,
-            isDisbursed = true
+            isDisbursed = false
         ),
         JlgGroup(
             groupId = "JLG-GPL-001",
@@ -142,7 +142,7 @@ object InitialSeedData {
             grtApprovedByBm = true,
             crossGuaranteeConsented = true,
             isSanctioned = true,
-            isDisbursed = true
+            isDisbursed = false
         ),
         JlgGroup(
             groupId = "JLG-PBR-001",
@@ -159,7 +159,7 @@ object InitialSeedData {
             grtApprovedByBm = true,
             crossGuaranteeConsented = true,
             isSanctioned = true,
-            isDisbursed = true
+            isDisbursed = false
         ),
         JlgGroup(
             groupId = "JLG-NEW-005",

@@ -1,5 +1,7 @@
 package com.example.ui.screens.collect
 
+import com.example.data.model.ledgerStatus
+
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -554,7 +556,7 @@ fun BorrowerRepaymentHistoryView(
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
-                                        text = "Receipt: ${record.receiptNumber}",
+                                        text = "${record.receiptNumber} · ${record.ledgerStatus}",
                                         fontSize = 10.sp,
                                         fontFamily = FontFamily.Monospace,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant

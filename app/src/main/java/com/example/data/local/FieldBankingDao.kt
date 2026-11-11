@@ -77,24 +77,45 @@ interface FieldBankingDao {
     @Query("SELECT * FROM repayment_records WHERE borrowerId = :borrowerId ORDER BY timestamp DESC")
     fun getRepaymentsByBorrower(borrowerId: String): Flow<List<RepaymentRecord>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertRepayment(repayment: RepaymentRecord)
 
     // Unsynced count
-    @Query("SELECT COUNT(*) FROM repayment_records WHERE syncPending = 1")
+    @Query("SELECT COUNT(*) FROM repayment_records WHERE syncPending = 1 AND officerCode IS NOT NULL")
     fun getPendingRepaymentsCount(): Flow<Int>
 
     @Query("SELECT COUNT(*) FROM borrowers WHERE syncPending = 1")
     fun getPendingBorrowersCount(): Flow<Int>
 
-    @Query("UPDATE repayment_records SET syncPending = 0")
-    suspend fun markAllRepaymentsSynced()
+    @Query("SELECT * FROM repayment_records WHERE syncPending = 1 AND officerCode = :officer ORDER BY id")
+    suspend fun pending(officer: String): List<RepaymentRecord>
 
-    @Query("UPDATE borrowers SET syncPending = 0")
-    suspend fun markAllBorrowersSynced()
+    @Query("UPDATE repayment_records SET syncPending = 0 WHERE id = :id AND receiptNumber = :receipt")
+    suspend fun acknowledge(id: Long, receipt: String)
 
-    @Query("UPDATE jlg_groups SET syncPending = 0")
-    suspend fun markAllGroupsSynced()
+    @Query("UPDATE jlg_groups SET disbursedOn = :date, isDisbursed = 1 WHERE groupId = :id AND isSanctioned = 1 AND disbursedOn IS NULL")
+    suspend fun confirmDisbursement(id: String, date: String)
+
+    @Query("UPDATE kendra_centers SET collectedAmount = collectedAmount + :amount WHERE centerId = :center")
+    suspend fun addCollected(center: String, amount: Double): Int
+
+    @Query("SELECT COALESCE(SUM(amountPaid),0) FROM repayment_records WHERE borrowerId = :borrower AND groupId = :groupId AND timestamp >= :start")
+    suspend fun paidSince(borrower: String, groupId: String, start: Long): Double
+
+    @androidx.room.Transaction
+    suspend fun collect(record: RepaymentRecord) {
+        require(record.paymentMode != com.example.data.model.PaymentMode.DYNAMIC_UPI_QR) { "UPI verification unavailable." }
+        require(record.amountPaid > 0 || record.overdueReason != null) { "Enter a positive payment amount." }
+        val paise = java.math.BigDecimal.valueOf(record.amountPaid).movePointRight(2)
+        require(paise.stripTrailingZeros().scale() <= 0) { "Use at most two decimal places." }
+        val group = requireNotNull(getGroupById(record.groupId))
+        require(group.isDisbursed && group.centerId == record.centerId && getBorrowerById(record.borrowerId)?.groupId == group.groupId)
+        val schedule = requireNotNull(com.example.data.repository.Installments.forGroup(group, record.timestamp)) { "No confirmed installment due." }
+        val remaining = schedule.totalDue - paidSince(record.borrowerId, record.groupId, schedule.start)
+        require(remaining > 0 && record.amountPaid.isFinite() && record.amountPaid in 0.0..remaining) { "Amount exceeds the remaining installment due." }
+        insertRepayment(record)
+        check(addCollected(record.centerId, record.amountPaid) == 1)
+    }
 
     // Cash Reconciliation
     @Query("SELECT * FROM cash_reconciliation WHERE reconciliationDate = :date LIMIT 1")

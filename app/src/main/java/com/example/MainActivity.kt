@@ -1,7 +1,7 @@
 package com.example
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -53,7 +53,7 @@ import com.example.ui.viewmodel.AppScreen
 import com.example.ui.viewmodel.FieldBankingViewModel
 import kotlinx.coroutines.launch
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -153,6 +153,7 @@ fun FieldBankingApp(viewModel: FieldBankingViewModel) {
 
                 AppScreen.FIELD_COLLECTIONS -> {
                     FieldCollectionsScreen(
+                        issuedReceipt = viewModel.lastIssuedReceipt.collectAsStateWithLifecycle().value,
                         state = uiState,
                         onNavigateBack = { viewModel.navigateTo(AppScreen.DASHBOARD) },
                         onCollectPayment = { item, amt, mode, reason, guar, lat, lng, acc, addr ->

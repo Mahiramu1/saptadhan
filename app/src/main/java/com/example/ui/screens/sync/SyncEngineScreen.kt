@@ -70,7 +70,7 @@ fun SyncEngineScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val pendingReceipts = state.repayments.count { it.syncPending }
+    val pendingReceipts = state.repayments.count { it.syncPending && it.officerCode == state.currentUser.employeeId }
     val pendingBorrowers = state.borrowers.count { it.syncPending }
     val pendingGroups = state.groups.count { it.syncPending }
     val totalPending = pendingReceipts + pendingBorrowers + pendingGroups
@@ -99,7 +99,7 @@ fun SyncEngineScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = if (isTelugu) "క్రాఫ్ట్ సిలికాన్ BR.Net ESB రెండు-మార్గాల సింక్" else "Craft Silicon BR.Net ESB Two-Way Sync Gateway",
+                            text = if (isTelugu) "క్రాఫ్ట్ సిలికాన్ BR.Net ESB రెండు-మార్గాల సింక్" else "Branch payment ledger",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -151,15 +151,15 @@ fun SyncEngineScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(
-                                    text = if (state.isOnlineMode) "Online Gateway Active" else "Zero-Connectivity Offline Mode",
+                                    text = if (state.isOnlineMode) "Online mode enabled" else "Zero-Connectivity Offline Mode",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 15.sp
                                 )
                                 Text(
                                     text = if (state.isOnlineMode)
-                                        "Connected to Wanaparthy Hub (TLS 1.3)"
+                                        "Sync contacts the configured branch ledger"
                                     else
-                                        "Local Room SQLite with SQLCipher Encryption",
+                                        "Receipts stay in the local database",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -240,7 +240,7 @@ fun SyncEngineScreen(
                                     fontSize = 15.sp
                                 )
                                 Text(
-                                    text = "Downloads daily demand sheets, center rosters & borrower profiles",
+                                    text = "Fetches dated transfer confirmations from the branch ledger",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -250,12 +250,8 @@ fun SyncEngineScreen(
                         Spacer(modifier = Modifier.height(12.dp))
 
                         Button(
-                            onClick = {
-                                onMorningSync()
-                                scope.launch {
-                                    snackbarHostState.showSnackbar("Morning Sync: Rosters refreshed from BR.Net ESB.")
-                                }
-                            },
+                            onClick = onMorningSync,
+                            enabled = state.isOnlineMode && !state.isSyncing,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("btn_morning_sync"),
@@ -266,7 +262,7 @@ fun SyncEngineScreen(
                                 CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
                                 Spacer(modifier = Modifier.width(6.dp))
                             }
-                            Text("Execute Morning Sync (Fetch Daily Demand)")
+                            Text("Refresh Confirmed Transfers")
                         }
                     }
                 }
@@ -296,7 +292,7 @@ fun SyncEngineScreen(
                                     fontSize = 15.sp
                                 )
                                 Text(
-                                    text = "Pushes delta changes with idempotent retry to Craft Silicon BR.Net",
+                                    text = "Upload this officer’s pending collection receipts",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -306,12 +302,8 @@ fun SyncEngineScreen(
                         Spacer(modifier = Modifier.height(12.dp))
 
                         Button(
-                            onClick = {
-                                onEveningSync()
-                                scope.launch {
-                                    snackbarHostState.showSnackbar("Evening Sync: Pushed offline buffer to BR.Net ESB.")
-                                }
-                            },
+                            onClick = onEveningSync,
+                            enabled = state.isOnlineMode && !state.isSyncing,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("btn_evening_sync"),
@@ -322,7 +314,7 @@ fun SyncEngineScreen(
                                 CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
                                 Spacer(modifier = Modifier.width(6.dp))
                             }
-                            Text("Push Evening Delta Queue ($totalPending records)")
+                            Text("Sync payments ($pendingReceipts pending)")
                         }
                     }
                 }

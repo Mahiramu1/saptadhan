@@ -140,7 +140,7 @@ class FieldBankingViewModel(application: Application) : AndroidViewModel(applica
         val user = args[15] as UserProfile
 
         val pendingItems = repository.computePendingRepayments(centers, groups, borrowers, repayments)
-        val totalDemand = centers.sumOf { it.expectedDemand }
+        val totalDemand = pendingItems.sumOf { it.installmentDue }
         val totalCollected = centers.sumOf { it.collectedAmount }
         val totalPending = pendingItems.sumOf { it.pendingAmount }
         val efficiency = if (totalDemand > 0) Math.round((totalCollected / totalDemand) * 1000.0) / 10.0 else 0.0
@@ -207,10 +207,11 @@ class FieldBankingViewModel(application: Application) : AndroidViewModel(applica
     }
 
     fun login(officerCode: String, role: String) {
+        if (com.example.data.ledger.Ledger.active().officer != officerCode) return
         _isLoggedIn.value = true
         _currentUser.value = UserProfile(
             employeeId = officerCode,
-            fullName = if (officerCode.contains("08") || officerCode.contains("FCO")) "K. Srinivas" else "S. Rajesh Kumar",
+            fullName = officerCode,
             role = role,
             branchCode = "TG-WNP-01",
             branchName = "Wanaparthy District Hub",
@@ -223,6 +224,7 @@ class FieldBankingViewModel(application: Application) : AndroidViewModel(applica
     }
 
     fun logout() {
+        com.example.data.ledger.Ledger.logout(getApplication())
         _isLoggedIn.value = false
         _currentScreen.value = AppScreen.LOGIN
         _syncMessage.value = "Logged out of Saptadhan."
@@ -239,7 +241,7 @@ class FieldBankingViewModel(application: Application) : AndroidViewModel(applica
         locationAccuracy: Float? = null,
         auditAddress: String? = null
     ) {
-        viewModelScope.launch {
+        saveCollection {
             val receipt = repository.recordRepayment(
                 centerId = item.centerId,
                 groupId = item.groupId,
@@ -379,11 +381,10 @@ class FieldBankingViewModel(application: Application) : AndroidViewModel(applica
                 grtApprovedByBm = true,
                 bmName = bmName,
                 isSanctioned = true,
-                isDisbursed = true,
                 syncPending = true
             )
             repository.updateGroup(updated)
-            _syncMessage.value = "Branch Manager GRT Approved! Sanction Letter & NACH Disbursement generated."
+            _syncMessage.value = "Loan approved. Refresh confirmed transfers after funds are disbursed."
         }
     }
 
@@ -409,7 +410,7 @@ class FieldBankingViewModel(application: Application) : AndroidViewModel(applica
         amount: Double,
         attendance: AttendanceStatus
     ) {
-        viewModelScope.launch {
+        saveCollection {
             val receipt = repository.recordRepayment(
                 centerId = centerId,
                 groupId = groupId,
@@ -440,7 +441,7 @@ class FieldBankingViewModel(application: Application) : AndroidViewModel(applica
         amount: Double,
         appType: String
     ) {
-        viewModelScope.launch {
+        saveCollection {
             val txnId = "UPI-NPCI-${(100000000000L..999999999999L).random()}"
             val receipt = repository.recordRepayment(
                 centerId = centerId,
@@ -467,7 +468,7 @@ class FieldBankingViewModel(application: Application) : AndroidViewModel(applica
         reason: OverdueReason,
         mutualGuaranteeCovered: Boolean
     ) {
-        viewModelScope.launch {
+        saveCollection {
             val receipt = repository.recordRepayment(
                 centerId = centerId,
                 groupId = groupId,
@@ -530,20 +531,27 @@ class FieldBankingViewModel(application: Application) : AndroidViewModel(applica
 
     // SYNC OPERATIONS
     fun performMorningSync() {
-        viewModelScope.launch {
-            _isSyncing.value = true
-            val res = repository.executeMorningSync()
-            _isSyncing.value = false
-            _syncMessage.value = res
-        }
+        sync { repository.executeMorningSync() }
     }
 
     fun performEveningSync() {
+        sync { "Server confirmed ${repository.executeEveningSync()} receipts." }
+    }
+
+    private fun sync(action: suspend () -> String) {
+        if (_isSyncing.value) return
+        _isSyncing.value = true
         viewModelScope.launch {
-            _isSyncing.value = true
-            val syncedCount = repository.executeEveningSync()
-            _isSyncing.value = false
-            _syncMessage.value = "Evening Sync Complete: Pushed $syncedCount offline records to BR.Net ESB."
+            try { _syncMessage.value = action() }
+            catch (e: Exception) { _syncMessage.value = e.message ?: "Ledger unavailable. Retry sync." }
+            finally { _isSyncing.value = false }
+        }
+    }
+
+    private fun saveCollection(action: suspend () -> Unit) {
+        viewModelScope.launch {
+            try { action() }
+            catch (e: Exception) { _syncMessage.value = e.message ?: "Could not save collection." }
         }
     }
 

@@ -1,5 +1,7 @@
 package com.example.ui.screens.collect
 
+import com.example.data.model.ledgerStatus
+
 import android.Manifest
 import android.content.Intent
 import android.net.Uri
@@ -100,6 +102,7 @@ import com.example.ui.theme.BankPrimaryContainer
 import com.example.ui.theme.RupeeGreen
 import com.example.ui.theme.WanaparthyGold
 import com.example.ui.viewmodel.BankingUiState
+import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -107,6 +110,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun FieldCollectionsScreen(
     state: BankingUiState,
+    issuedReceipt: RepaymentRecord?,
     onNavigateBack: () -> Unit,
     onCollectPayment: (
         item: PendingRepaymentItem,
@@ -714,6 +718,8 @@ fun FieldCollectionsScreen(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
+                        item.installmentDate?.let { Text("Installment due: $it", fontSize = 11.sp) }
+
                         // Action Buttons Bar
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -742,7 +748,7 @@ fun FieldCollectionsScreen(
                                 // Dynamic UPI QR CTA
                                 OutlinedButton(
                                     onClick = {
-                                        upiSimulatingItem = item
+                                        scope.launch { snackbarHostState.showSnackbar("UPI collection requires a confirmed provider transaction.") }
                                     },
                                     modifier = Modifier
                                         .weight(1f)
@@ -758,17 +764,7 @@ fun FieldCollectionsScreen(
                                 // Already collected - print receipt
                                 OutlinedButton(
                                     onClick = {
-                                        receiptToPrint = RepaymentRecord(
-                                            receiptNumber = "REC-WNP-2026-${(1000..9999).random()}",
-                                            centerId = item.centerId,
-                                            groupId = item.groupId,
-                                            borrowerId = item.borrowerId,
-                                            borrowerName = item.borrowerName,
-                                            installmentDue = item.installmentDue,
-                                            amountPaid = item.amountPaid,
-                                            paymentMode = PaymentMode.CASH,
-                                            attendance = AttendanceStatus.PRESENT
-                                        )
+                                        receiptToPrint = state.repayments.firstOrNull { it.borrowerId == item.borrowerId && it.amountPaid > 0 }
                                     },
                                     modifier = Modifier
                                         .weight(1f)
@@ -969,7 +965,7 @@ fun FieldCollectionsScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "Instant 58mm digital receipt with GPS Audit will be saved to Room Database and SMS dispatched in Telugu.",
+                            text = "The receipt is saved on this device. Sync it when internet is available.",
                             fontSize = 11.sp,
                             color = Color(0xFF166534),
                             modifier = Modifier.padding(8.dp)
@@ -980,7 +976,10 @@ fun FieldCollectionsScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        val amount = customAmountStr.toDoubleOrNull() ?: target.pendingAmount
+                        val amount = customAmountStr.toDoubleOrNull()
+                        if (amount == null || !amount.isFinite() || amount <= 0 || amount > target.pendingAmount) {
+                            scope.launch { snackbarHostState.showSnackbar("Enter a positive amount within the balance due.") }; return@Button
+                        }
                         val gps = activeGpsAudit ?: currentGps
                         onCollectPayment(
                             target,
@@ -993,26 +992,10 @@ fun FieldCollectionsScreen(
                             gps.accuracyMeters,
                             gps.addressOrCluster
                         )
-                        receiptToPrint = RepaymentRecord(
-                            receiptNumber = "REC-WNP-2026-${(1000..9999).random()}",
-                            centerId = target.centerId,
-                            groupId = target.groupId,
-                            borrowerId = target.borrowerId,
-                            borrowerName = target.borrowerName,
-                            installmentDue = target.installmentDue,
-                            amountPaid = amount,
-                            paymentMode = PaymentMode.CASH,
-                            attendance = AttendanceStatus.PRESENT,
-                            geoLatitude = gps.latitude,
-                            geoLongitude = gps.longitude,
-                            locationAccuracyMeters = gps.accuracyMeters,
-                            auditLocationAddress = gps.addressOrCluster
-                        )
+                        
                         paymentItemToCollect = null
                         activeGpsAudit = null
-                        scope.launch {
-                            snackbarHostState.showSnackbar("Cash payment ₹${amount.toInt()} with GPS Audit (${gps.latitude}, ${gps.longitude}) saved to Room DB!")
-                        }
+
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = BankPrimary),
                     modifier = Modifier.testTag("btn_confirm_cash_collect")
@@ -1294,8 +1277,11 @@ fun FieldCollectionsScreen(
     }
 
     // Modal 4: Thermal Receipt Preview
+    LaunchedEffect(issuedReceipt) {
+        if (issuedReceipt != null) { receiptToPrint = issuedReceipt; onDismissReceipt() }
+    }
     if (receiptToPrint != null) {
-        val r = receiptToPrint!!
+        val r = state.repayments.firstOrNull { it.receiptNumber == receiptToPrint?.receiptNumber } ?: receiptToPrint!!
         AlertDialog(
             onDismissRequest = { receiptToPrint = null },
             title = {
@@ -1329,10 +1315,11 @@ fun FieldCollectionsScreen(
                             color = Color.DarkGray
                         )
                         HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
+                        Text(r.ledgerStatus)
                         Text("Receipt No: ${r.receiptNumber}", fontFamily = FontFamily.Monospace, fontSize = 10.sp)
                         Text("Borrower: ${r.borrowerName}", fontWeight = FontWeight.Bold, fontSize = 11.sp)
                         Text("Center: ${r.centerId} • Group: ${r.groupId}", fontSize = 10.sp)
-                        Text("Amount Collected: ₹${r.amountPaid.toInt()}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF166534))
+                        Text("Amount Collected: ${FieldBankingRepository.formatInr(r.amountPaid)}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF166534))
                         Text("Payment Mode: ${r.paymentMode.name}", fontSize = 10.sp)
 
                         // GPS Field Audit on Slip
@@ -1347,7 +1334,7 @@ fun FieldCollectionsScreen(
 
                         HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
                         Text(
-                            text = "SMS Dispatch: ధన్యవాదములు! మీ వాయిదా ₹${r.amountPaid.toInt()} సప్తధాన్ ఫైనాన్స్‌కు జమచేయబడింది.",
+                            text = "SMS Dispatch: ధన్యవాదములు! మీ వాయిదా ${FieldBankingRepository.formatInr(r.amountPaid)} సప్తధాన్ ఫైనాన్స్‌కు జమచేయబడింది.",
                             fontSize = 9.sp,
                             color = Color.DarkGray
                         )

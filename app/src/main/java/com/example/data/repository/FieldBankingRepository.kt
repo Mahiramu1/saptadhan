@@ -97,34 +97,23 @@ class FieldBankingRepository(private val dao: FieldBankingDao) {
         val centerMap = centers.associateBy { it.centerId }
         val repaymentMap = repayments.groupBy { it.borrowerId }
         val now = System.currentTimeMillis()
-        val oneDayMillis = 24 * 3600 * 1000L
 
         return borrowers.mapNotNull { borrower ->
             val group = groupMap[borrower.groupId] ?: return@mapNotNull null
             val center = centerMap[group.centerId] ?: return@mapNotNull null
 
-            val kfs = calculateKfs(borrower.fullName, group.groupName, group.sanctionedAmountPerMember, group.loanCycle)
-            val installmentDue = kfs.installmentAmount
-
-            val borrowerRecords = repaymentMap[borrower.borrowerId].orEmpty()
-            val todayRecords = borrowerRecords.filter { (now - it.timestamp) < oneDayMillis }
-            val amountPaid = todayRecords.sumOf { it.amountPaid }
-            val pendingAmount = (installmentDue - amountPaid).coerceAtLeast(0.0)
-
-            val totalHistoricalPaid = borrowerRecords.sumOf { it.amountPaid }
-            val previousPaymentsCount = borrowerRecords.count { it.amountPaid > 0 }
-
-            val lastRecord = borrowerRecords.maxByOrNull { it.timestamp }
-            val isDelinquent = todayRecords.any { it.overdueReason != null || it.isCoveredByGuarantee }
-
-            val pseudoHash = Math.abs(borrower.borrowerId.hashCode())
-            val overdueDays = when {
-                isDelinquent -> 14
-                amountPaid >= installmentDue -> 0
-                pseudoHash % 5 == 0 -> 21
-                pseudoHash % 3 == 0 -> 7
-                else -> 0
+            val schedule = Installments.forGroup(group, now) ?: return@mapNotNull null
+            val installmentDue = schedule.totalDue
+            val borrowerRecords = repaymentMap[borrower.borrowerId].orEmpty().filter {
+                it.groupId == group.groupId && it.timestamp >= schedule.start
             }
+            val totalHistoricalPaid = borrowerRecords.sumOf { it.amountPaid }
+            val amountPaid = totalHistoricalPaid
+            val pendingAmount = (installmentDue - amountPaid).coerceAtLeast(0.0)
+            val previousPaymentsCount = borrowerRecords.count { it.amountPaid > 0 }
+            val lastRecord = borrowerRecords.maxByOrNull { it.timestamp }
+            val isDelinquent = pendingAmount > 0 && lastRecord?.overdueReason != null
+            val overdueDays = schedule.daysOverdue(amountPaid)
 
             val status = when {
                 amountPaid >= installmentDue -> RepaymentStatus.PAID
@@ -159,7 +148,8 @@ class FieldBankingRepository(private val dao: FieldBankingDao) {
                 attendance = lastRecord?.attendance ?: AttendanceStatus.PRESENT,
                 status = status,
                 totalPaidHistorical = totalHistoricalPaid,
-                previousPaymentsCount = previousPaymentsCount
+                previousPaymentsCount = previousPaymentsCount,
+                installmentDate = schedule.installmentDate(amountPaid)
             )
         }
     }
@@ -254,11 +244,13 @@ class FieldBankingRepository(private val dao: FieldBankingDao) {
         geoLatitude: Double? = null,
         geoLongitude: Double? = null,
         locationAccuracyMeters: Float? = null,
-        auditLocationAddress: String? = null
+        auditLocationAddress: String? = null,
+        officerCode: String = com.example.data.ledger.Ledger.active().officer
     ): RepaymentRecord {
-        val receiptNumber = "REC-WNP-${SimpleDateFormat("yyMMdd", Locale.ENGLISH).format(Date())}-${(1000..9999).random()}"
+        val receiptNumber = "REC-WNP-${UUID.randomUUID()}"
         val record = RepaymentRecord(
             receiptNumber = receiptNumber,
+            officerCode = officerCode,
             centerId = centerId,
             groupId = groupId,
             borrowerId = borrowerId,
@@ -277,15 +269,7 @@ class FieldBankingRepository(private val dao: FieldBankingDao) {
             locationAccuracyMeters = locationAccuracyMeters,
             auditLocationAddress = auditLocationAddress
         )
-        dao.insertRepayment(record)
-
-        // Update collected amount in Kendra Center
-        val center = dao.getCenterById(centerId)
-        if (center != null) {
-            val newCollected = center.collectedAmount + amountPaid
-            dao.updateCenter(center.copy(collectedAmount = newCollected))
-        }
-
+        dao.collect(record)
         return record
     }
 
@@ -378,18 +362,18 @@ class FieldBankingRepository(private val dao: FieldBankingDao) {
     }
 
     suspend fun executeMorningSync(): String {
-        // Simulates Craft Silicon BR.Net ESB morning sync for TG-WNP-01
-        return "BR.Net ESB: Downloaded 6 Kendra Rosters, 5 JLG Groups, 25 Borrower profiles successfully."
+        val groups = com.example.data.ledger.Ledger.disbursements()
+        for (id in groups.keys()) dao.confirmDisbursement(id, groups.getString(id))
+        return "Confirmed disbursements refreshed."
     }
 
     suspend fun executeEveningSync(): Int {
-        // Delta sync to Craft Silicon BR.Net ESB
-        val repaymentsCount = dao.getPendingRepaymentsCount().firstOrNull() ?: 0
-        val borrowersCount = dao.getPendingBorrowersCount().firstOrNull() ?: 0
-        dao.markAllRepaymentsSynced()
-        dao.markAllBorrowersSynced()
-        dao.markAllGroupsSynced()
-        return repaymentsCount + borrowersCount
+        val receipts = dao.pending(com.example.data.ledger.Ledger.active().officer)
+        for (record in receipts) {
+            com.example.data.ledger.Ledger.upload(record)
+            dao.acknowledge(record.id, record.receiptNumber)
+        }
+        return receipts.size
     }
 
     companion object {

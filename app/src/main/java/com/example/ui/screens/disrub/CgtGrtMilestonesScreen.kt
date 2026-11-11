@@ -291,6 +291,7 @@ fun CgtGrtMilestonesScreen(
                                 Spacer(modifier = Modifier.height(14.dp))
 
                                 if (group.grtApprovedByBm) {
+                                    Text(group.disbursedOn?.let { "Transfer confirmed: $it" } ?: "Awaiting transfer. Use Sync → Refresh Confirmed Transfers after branch confirmation.")
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)

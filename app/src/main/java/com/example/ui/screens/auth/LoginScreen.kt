@@ -83,11 +83,13 @@ fun LoginScreen(
     onToggleLanguage: () -> Unit,
     onLoginSuccess: (officerCode: String, roleName: String) -> Unit
 ) {
+    val activity = androidx.activity.compose.LocalActivity.current as androidx.fragment.app.FragmentActivity
+    var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    var officerCode by remember { mutableStateOf("FCO-WNP-08") }
-    var password by remember { mutableStateOf("1234") }
+    var officerCode by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var rememberMe by remember { mutableStateOf(true) }
     var branchSelected by remember { mutableStateOf("TG-WNP-01 (Wanaparthy Hub)") }
@@ -367,7 +369,17 @@ fun LoginScreen(
                                 scope.launch { snackbarHostState.showSnackbar("Please enter PIN!") }
                                 return@Button
                             }
-                            onLoginSuccess(officerCode, "Senior Field Credit Officer")
+                            if (busy) return@Button
+                            busy = true
+                            scope.launch {
+                                try {
+                                    val session = com.example.data.ledger.Ledger.login(activity, officerCode, password, rememberMe)
+                                    password = ""
+                                    onLoginSuccess(session.officer, "Field Credit Officer")
+                                } catch (e: Exception) {
+                                    snackbarHostState.showSnackbar(e.message ?: "Sign-in failed")
+                                } finally { busy = false }
+                            }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -388,7 +400,16 @@ fun LoginScreen(
                     // Biometric Authentication
                     OutlinedButton(
                         onClick = {
-                            onLoginSuccess(officerCode, "Senior Field Credit Officer")
+                            if (!busy) {
+                                busy = true
+                                com.example.data.ledger.Ledger.biometric(activity, { verified ->
+                                    busy = false
+                                    onLoginSuccess(verified.officer, "Field Credit Officer")
+                                }, { message ->
+                                    busy = false
+                                    scope.launch { snackbarHostState.showSnackbar(message) }
+                                })
+                            }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -409,63 +430,6 @@ fun LoginScreen(
             }
 
             Spacer(modifier = Modifier.height(18.dp))
-
-            // Demo Credentials Card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(imageVector = Icons.Default.Security, contentDescription = null, tint = BankPrimary, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Quick Demo Auto-Fill (Wanaparthy Staff):",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                officerCode = "FCO-WNP-08"
-                                password = "1234"
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("btn_autofill_fco"),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("K. Srinivas (FCO)", fontSize = 11.sp)
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                officerCode = "BM-WNP-01"
-                                password = "5678"
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("btn_autofill_bm"),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("S. Rajesh (BM)", fontSize = 11.sp)
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
 
             // Regulatory Footer
             Column(

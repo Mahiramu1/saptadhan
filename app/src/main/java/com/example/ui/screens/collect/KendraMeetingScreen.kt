@@ -1,5 +1,7 @@
 package com.example.ui.screens.collect
 
+import com.example.data.model.ledgerStatus
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -108,7 +110,8 @@ fun KendraMeetingScreen(
     }
     val center = rawCenter
     val centerGroups = state.groups.filter { it.centerId == center.centerId }
-    val centerBorrowers = state.borrowers.filter { b -> centerGroups.any { it.groupId == b.groupId } }
+    val due = state.pendingRepayments.associateBy { it.borrowerId }
+    val centerBorrowers = state.borrowers.filter { b -> centerGroups.any { it.groupId == b.groupId } && b.borrowerId in due }
 
     // Repayments for this center
     val centerRepayments = state.repayments.filter { it.centerId == center.centerId }
@@ -256,11 +259,11 @@ fun KendraMeetingScreen(
             items(centerBorrowers) { borrower ->
                 val group = centerGroups.find { it.groupId == borrower.groupId }
                 val pastRepayment = centerRepayments.find { it.borrowerId == borrower.borrowerId }
-                val isPaid = pastRepayment != null && pastRepayment.amountPaid > 0
+                val isPaid = pastRepayment != null && due[borrower.borrowerId]?.pendingAmount == 0.0
                 val currentAttendance = attendanceMap[borrower.borrowerId] ?: AttendanceStatus.PRESENT
 
                 // Installment standard calculation: approx 2150 per fortnight
-                val installmentDue = 2150.0
+                val installmentDue = due.getValue(borrower.borrowerId).pendingAmount
 
                 ElevatedCard(
                     modifier = Modifier
@@ -283,6 +286,7 @@ fun KendraMeetingScreen(
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 15.sp
                                 )
+                                due[borrower.borrowerId]?.installmentDate?.let { Text("Installment due: $it", fontSize = 11.sp) }
                                 Text(
                                     text = "${borrower.borrowerId} • ${group?.groupName ?: ""}",
                                     fontSize = 11.sp,
@@ -367,7 +371,7 @@ fun KendraMeetingScreen(
                                     Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = RupeeGreen, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = "Receipt: ${pastRepayment.receiptNumber}",
+                                        text = "Receipt: ${pastRepayment.receiptNumber} · ${pastRepayment.ledgerStatus}",
                                         fontSize = 11.sp,
                                         fontFamily = FontFamily.Monospace,
                                         color = Color(0xFF166534)
@@ -418,7 +422,7 @@ fun KendraMeetingScreen(
                                 // Dynamic UPI QR Mode
                                 Button(
                                     onClick = {
-                                        upiBorrower = borrower
+                                        scope.launch { snackbarHostState.showSnackbar("UPI collection requires a confirmed provider transaction.") }
                                     },
                                     modifier = Modifier
                                         .weight(1f)
@@ -460,7 +464,7 @@ fun KendraMeetingScreen(
     // Dynamic UPI QR Modal with simulated PhonePe / GPay webhook
     if (upiBorrower != null) {
         val targetBorrower = upiBorrower!!
-        val installmentDue = 2150.0
+        val installmentDue = due[targetBorrower.borrowerId]?.pendingAmount ?: 0.0
 
         AlertDialog(
             onDismissRequest = {
@@ -613,7 +617,7 @@ fun KendraMeetingScreen(
     // Delinquency / Overdue Tagging Dialog with Mutual Guarantee Protocol
     if (borrowerForDelinquency != null) {
         val targetBorrower = borrowerForDelinquency!!
-        val installmentDue = 2150.0
+        val installmentDue = due[targetBorrower.borrowerId]?.pendingAmount ?: 0.0
 
         AlertDialog(
             onDismissRequest = { borrowerForDelinquency = null },
@@ -748,10 +752,10 @@ fun KendraMeetingScreen(
                                 "BORROWER: ${rec.borrowerName}\n" +
                                 "BORR ID : ${rec.borrowerId}\n" +
                                 "PAY MODE: ${rec.paymentMode.name}\n" +
-                                "AMOUNT  : INR ₹${rec.amountPaid.toInt()}.00\n" +
+                                "AMOUNT  : ${FieldBankingRepository.formatInr(rec.amountPaid)}\n" +
                                 (if (rec.upiTxnId != null) "UPI TXN : ${rec.upiTxnId}\n" else "") +
                                 (if (rec.isCoveredByGuarantee) "NOTE    : JLG MUTUAL GUARANTEE\n" else "") +
-                                "STATUS  : TRANSACTION SUCCESS\n" +
+                                "STATUS  : ${rec.ledgerStatus}\n" +
                                 "--------------------------------\n" +
                                 "REGIONAL TELUGU SMS SENT TO MOB \n" +
                                 "ధన్యవాదాలు - వనపర్తి బ్రాంచ్     \n" +

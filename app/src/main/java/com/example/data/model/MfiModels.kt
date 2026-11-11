@@ -87,6 +87,7 @@ data class JlgGroup(
     val crossGuaranteeConsented: Boolean = false,
     val isSanctioned: Boolean = false,
     val isDisbursed: Boolean = false,
+    val disbursedOn: String? = null,
     val syncPending: Boolean = false
 )
 
@@ -117,7 +118,7 @@ data class Borrower(
     val syncPending: Boolean = false
 )
 
-@Entity(tableName = "repayment_records")
+@Entity(tableName = "repayment_records", indices = [androidx.room.Index(value = ["receiptNumber", "officerCode"], unique = true)])
 data class RepaymentRecord(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val receiptNumber: String,         // e.g. "REC-WNP-2026-98102"
@@ -137,7 +138,8 @@ data class RepaymentRecord(
     val geoLatitude: Double? = null,
     val geoLongitude: Double? = null,
     val locationAccuracyMeters: Float? = null,
-    val auditLocationAddress: String? = null
+    val auditLocationAddress: String? = null,
+    val officerCode: String? = null
 )
 
 @Entity(tableName = "cash_reconciliation")
@@ -237,8 +239,16 @@ data class PendingRepaymentItem(
     val attendance: AttendanceStatus = AttendanceStatus.PRESENT,
     val status: RepaymentStatus = RepaymentStatus.DUE_TODAY,
     val totalPaidHistorical: Double = 0.0,
-    val previousPaymentsCount: Int = 0
+    val previousPaymentsCount: Int = 0,
+    val installmentDate: String? = null
 )
+
+val RepaymentRecord.ledgerStatus: String
+    get() = when {
+        officerCode == null -> "Unverified legacy record"
+        syncPending -> "Pending"
+        else -> "Synced"
+    }
 
 data class UserProfile(
     val employeeId: String = "FCO-WNP-08",

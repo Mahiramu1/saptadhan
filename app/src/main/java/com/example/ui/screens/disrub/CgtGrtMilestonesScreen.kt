@@ -443,7 +443,7 @@ fun CgtGrtMilestonesScreen(
                                     value = "₹${kfs.insurancePremium.toInt()}"
                                 )
                                 KfsRow(
-                                    label = if (kfsLanguageTelugu) "ఖాతాలో జమ అయ్యే నికర మొత్తం" else "Net Disbursed to Bank Account",
+                                    label = if (kfsLanguageTelugu) "ఖాతాలో జమ అయ్యే నికర మొత్తం" else "Net amount after deductions",
                                     value = FieldBankingRepository.formatInr(kfs.netDisbursedAmount),
                                     isBold = true,
                                     valueColor = RupeeGreen
@@ -520,13 +520,13 @@ fun CgtGrtMilestonesScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Wanaparthy Branch Code: TG-WNP-01\nSanction Ref: SAN-WNP-${group.groupId}\nDate: 2026-10-02",
+                        text = "Wanaparthy Branch Code: TG-WNP-01\nSanction Ref: SAN-WNP-${group.groupId}",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp
                     )
                     HorizontalDivider()
                     Text(
-                        text = "To:\n${group.groupName}\nLeader: ${groupBorrowers.firstOrNull()?.fullName}\n\nDear Borrower,\nWe are pleased to inform that your JLG loan of ₹${(group.sanctionedAmountPerMember * 5).toInt()} (₹${group.sanctionedAmountPerMember.toInt()} per member) is SANCTIONED under Cycle ${group.loanCycle}.\n\nDisbursement initiated directly to Aadhaar-linked Bank Accounts via NACH/NEFT.",
+                        text = "To:\n${group.groupName}\nLeader: ${groupBorrowers.firstOrNull()?.fullName}\n\nDear Borrower,\nWe are pleased to inform that your JLG loan of ₹${(group.sanctionedAmountPerMember * groupBorrowers.size).toInt()} (₹${group.sanctionedAmountPerMember.toInt()} per member) is SANCTIONED under Cycle ${group.loanCycle}.\n\n${group.disbursedOn?.let { "Transfer confirmed on $it." } ?: "Transfer confirmation is pending."}",
                         fontSize = 12.sp,
                         lineHeight = 16.sp
                     )

@@ -40,7 +40,7 @@ object Ledger {
 
     private suspend fun post(path: String, body: JSONObject, token: String? = null) = withContext(Dispatchers.IO) {
         val base = BuildConfig.LEDGER_API_URL.trimEnd('/')
-        require(base.startsWith("https://")) { "Configure the HTTPS ledger address in the app build." }
+        require(base.startsWith("https://") && base != "https://unconfigured.invalid") { "Configure the HTTPS ledger address in the app build." }
         val conn = URL("$base/$path").openConnection() as HttpsURLConnection
         try {
             conn.requestMethod = "POST"

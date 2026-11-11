@@ -34,6 +34,7 @@ phase() {
 phase prepare &
 prepare=$!
 for _ in $(seq 1 120); do
+  if ! kill -0 "$prepare" 2>/dev/null; then wait "$prepare"; exit 1; fi
   if adb shell run-as "$app" test -f files/ready-for-offline; then break; fi
   sleep 1
 done

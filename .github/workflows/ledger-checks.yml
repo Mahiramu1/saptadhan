@@ -19,4 +19,19 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
+      - name: Configure isolated emulator HTTPS endpoint
+        run: |
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost" -keyout /tmp/field.key -out /tmp/field.crt
+          mkdir -p app/src/debug/res/{raw,xml}
+          cp /tmp/field.crt app/src/debug/res/raw/field_ca.crt
+          echo '<network-security-config><domain-config><domain>localhost</domain><trust-anchors><certificates src="@raw/field_ca"/></trust-anchors></domain-config></network-security-config>' > app/src/debug/res/xml/field_tls.xml
+          echo '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:networkSecurityConfig="@xml/field_tls"/></manifest>' > app/src/debug/AndroidManifest.xml
+          echo 'LEDGER_API_URL=https://localhost:8443' > .env
       - run: gradle :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest
+      - name: Enable KVM for the emulator
+        run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          script: bash .github/scripts/android-field-test.sh
